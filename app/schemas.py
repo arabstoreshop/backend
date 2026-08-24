@@ -10,20 +10,40 @@ _SAUDI_PHONE_RE = re.compile(r"^05\d{8}$")
 # Canonical product catalog — server-side source of truth
 PRODUCT_CATALOG = {
     "NSM-GEL-001": {
-        "name": "جل المنثول للتبريد ضد الحكة والحرارة",
-        "slug": "menthol-cooling-gel",
+        "name": "جل البواسير بتقنية الكيتوزان الحيوي",
+        "slug": "chitosan-bio-gel",
     },
-    "NSM-TAB-001": {
-        "name": "أقراص الألياف والأوردة ضد تكرار البواسير",
-        "slug": "fiber-vein-tablets",
+    "NSM-DIO-001": {
+        "name": "كبسولات الديوسمين والهسبريدين لدعم الأوردة",
+        "slug": "diosmin-hesperidin-capsules",
+    },
+    "NSM-CUR-001": {
+        "name": "كبسولات الكركمين المُعزّز لعلاج البواسير",
+        "slug": "curcumin-advanced-capsules",
+    },
+    "NSM-SPR-001": {
+        "name": "بخاخ الأعشاب الطبيعية لتخفيف البواسير",
+        "slug": "herbal-relief-spray",
     },
     "NSM-WIP-001": {
-        "name": "مناديل الألوفيرا ضد التهيّج بعد الحمام",
-        "slug": "aloe-soothing-wipes",
+        "name": "مناديل الويتش هازل والألوفيرا الطبية",
+        "slug": "witch-hazel-aloe-wipes",
     },
-    "NSM-UPSELL": {
-        "name": "عرض إضافي نسيم",
-        "slug": "upsell",
+    "NSM-FIB-001": {
+        "name": "كبسولات الألياف الطبيعية بالسيليوم",
+        "slug": "psyllium-fiber-capsules",
+    },
+    "NSM-SUP-001": {
+        "name": "تحاميل البواسير بالكيتوزان والأعشاب",
+        "slug": "herbal-hemorrhoid-suppositories",
+    },
+    "NSM-CSH-001": {
+        "name": "وسادة الراحة الطبية للبواسير",
+        "slug": "hemorrhoid-donut-cushion",
+    },
+    "NSM-BTH-001": {
+        "name": "حوض المقعدة العلاجي القابل للطي",
+        "slug": "foldable-sitz-bath",
     },
 }
 
