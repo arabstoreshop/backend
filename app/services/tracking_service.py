@@ -1,8 +1,9 @@
 """
 Server-side conversion APIs: Meta CAPI, TikTok Events API, Snap CAPI.
 Browser/server deduplication uses matching event IDs passed from frontend.
-Phone is hashed server-side only.
+Phone is hashed server-side only (never send raw phone to ad platforms).
 """
+import hashlib
 import logging
 import time
 
@@ -12,6 +13,20 @@ from app.config import settings
 from app.models import Order
 
 logger = logging.getLogger(__name__)
+
+
+def _sha256(value: str) -> str:
+    return hashlib.sha256(value.strip().encode()).hexdigest()
+
+
+def _meta_phone_hash(order: Order) -> str:
+    """Meta wants SHA256 of digits only with country code, no + or symbols."""
+    return _sha256(order.phone_digits)
+
+
+def _e164_phone_hash(order: Order) -> str:
+    """TikTok/Snap want SHA256 of E.164 including + (e.g. +9665xxxxxxxx)."""
+    return _sha256(order.phone_e164)
 
 
 def _make_event_id(order: Order) -> str:
@@ -33,8 +48,8 @@ async def send_meta_capi(order: Order) -> None:
                 "event_id": event_id,
                 "action_source": "website",
                 "user_data": {
-                    "ph": [order.phone_hash],
-                    "country": ["sa"],
+                    "ph": [_meta_phone_hash(order)],
+                    "country": [_sha256("sa")],
                 },
                 "custom_data": {
                     "currency": "SAR",
@@ -74,7 +89,7 @@ async def send_tiktok_events(order: Order) -> None:
         "timestamp": str(int(time.time())),
         "context": {
             "user": {
-                "phone_number": order.phone_hash,
+                "phone_number": _e164_phone_hash(order),
             },
         },
         "properties": {
@@ -115,7 +130,7 @@ async def send_snap_capi(order: Order) -> None:
                 "event_conversion_type": "WEB",
                 "event_tag": event_id,
                 "timestamp": str(int(time.time() * 1000)),
-                "hashed_phone_number": order.phone_hash,
+                "hashed_phone_number": _e164_phone_hash(order),
                 "price": order.total_sar,
                 "currency": "SAR",
             }

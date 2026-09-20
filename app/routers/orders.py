@@ -8,6 +8,7 @@ from app.database import get_db
 from app.schemas import OrderIn, OrderOut
 from app.services.ip_service import check_ip
 from app.services.order_service import create_order, get_order_by_number
+from app.services.rate_limit import too_many_orders
 from app.services.sheet_service import forward_to_sheet
 from app.services.tracking_service import send_all_capi
 
@@ -28,9 +29,16 @@ def _get_client_ip(request: Request) -> str:
 
 
 @router.post("", response_model=OrderOut, status_code=201)
+@router.post("/", response_model=OrderOut, status_code=201, include_in_schema=False)
 async def place_order(request: Request, order_in: OrderIn, db: Session = Depends(get_db)):
     client_ip = _get_client_ip(request)
     logger.info("Order attempt from IP=%s phone=%s", client_ip, order_in.phone[:4] + "****")
+
+    if not order_in.items:
+        raise HTTPException(status_code=422, detail="يجب أن يحتوي الطلب على منتج واحد على الأقل")
+
+    if too_many_orders(f"{client_ip}:{order_in.phone}"):
+        raise HTTPException(status_code=429, detail="طلبات كثيرة. حاول بعد قليل.")
 
     ip_result = await check_ip(client_ip, phone=order_in.phone)
     if not ip_result.allowed:

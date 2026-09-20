@@ -29,8 +29,14 @@ class Settings(BaseSettings):
     # Frontend origin for CORS
     frontend_url: str = "https://naseem.beauty"
 
+    # Admin (Profit Calculator + stats)
+    admin_api_key: str = ""
+
     # Environment
     environment: str = "production"
+
+    # Temporary test mode: any phone, skip Saudi/VPN geo block.
+    restrict_orders_to_saudi: bool = False
 
     # Pricing (SAR) — source of truth
     price_1: int = 199

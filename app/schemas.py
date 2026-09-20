@@ -4,9 +4,6 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator, model_validator
 
-# Valid Saudi phone pattern
-_SAUDI_PHONE_RE = re.compile(r"^05\d{8}$")
-
 # Canonical product catalog — server-side source of truth
 PRODUCT_CATALOG = {
     "NSM-GEL-001": {
@@ -45,11 +42,18 @@ PRODUCT_CATALOG = {
         "name": "حوض المقعدة العلاجي القابل للطي",
         "slug": "foldable-sitz-bath",
     },
+    "NSM-SCLP-SER": {"name": "نسيم سكالب — سيروم", "slug": "naseem-scalp-serum", "line": "beauty"},
+    "NSM-BARR-CRM": {"name": "نسيم بارير — كريم", "slug": "naseem-barrier-cream", "line": "beauty"},
+    "NSM-RGRD-PTC": {"name": "نسيم ريغارد — باتش", "slug": "naseem-regard-patches", "line": "beauty"},
+    "NSM-SCLP-GUM": {"name": "نسيم سكالب — جامي", "slug": "naseem-scalp-gummies", "line": "beauty"},
+    "NSM-BARR-GUM": {"name": "نسيم بارير — جامي", "slug": "naseem-barrier-gummies", "line": "beauty"},
+    "NSM-RGRD-GUM": {"name": "نسيم ريغارد — جامي", "slug": "naseem-regard-gummies", "line": "beauty"},
 }
 
-# Tiered pricing: qty → price per unit (total price / qty)
-# Actually priced as bundle totals:
+# Tiered pricing: qty → bundle total
 BUNDLE_PRICES = {1: 199, 2: 279, 3: 349}
+BEAUTY_BUNDLE_PRICES = {1: 199, 2: 279, 3: 388}
+BEAUTY_SKUS = {sku for sku, meta in PRODUCT_CATALOG.items() if meta.get("line") == "beauty"}
 UPSELL_PRICE = 99
 
 
@@ -61,8 +65,9 @@ class OrderItemIn(BaseModel):
     @field_validator("sku")
     @classmethod
     def validate_sku(cls, v: str) -> str:
-        if v not in PRODUCT_CATALOG:
-            raise ValueError(f"Unknown SKU: {v}")
+        v = v.strip()
+        if not v or len(v) > 64:
+            raise ValueError("Invalid SKU")
         return v
 
     @field_validator("quantity")
@@ -76,6 +81,9 @@ class OrderItemIn(BaseModel):
 class OrderIn(BaseModel):
     name: str
     phone: str
+    city: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
     items: list[OrderItemIn]
     browser_event_id: Optional[str] = None
 
@@ -91,8 +99,9 @@ class OrderIn(BaseModel):
     @classmethod
     def validate_phone(cls, v: str) -> str:
         v = v.strip()
-        if not _SAUDI_PHONE_RE.match(v):
-            raise ValueError("رقم الجوال يجب أن يبدأ بـ 05 ويتكون من 10 أرقام")
+        digits = re.sub(r"\D", "", v)
+        if len(digits) < 6 or len(v) > 20:
+            raise ValueError("أدخل رقم هاتف صحيح")
         return v
 
     @field_validator("items")
@@ -108,17 +117,21 @@ class OrderIn(BaseModel):
         regular_items = [i for i in self.items if not i.is_upsell]
         upsell_items = [i for i in self.items if i.is_upsell]
 
-        # Each product group: validate bundle pricing
-        # Group by SKU (main product)
-        from collections import Counter
-        sku_counter: Counter = Counter()
+        from collections import defaultdict
+        qty_by_sku: dict[str, int] = defaultdict(int)
         for item in regular_items:
-            sku_counter[item.sku] += item.quantity
+            qty_by_sku[item.sku] += item.quantity
 
-        # We allow one or multiple SKUs; total qty drives the bundle price
-        total_main_qty = sum(sku_counter.values())
-        if total_main_qty not in BUNDLE_PRICES:
-            raise ValueError(f"Quantity {total_main_qty} not supported. Choose 1, 2, or 3.")
+        skus = list(qty_by_sku)
+        beauty = [s for s in skus if s in BEAUTY_SKUS]
+        care = [s for s in skus if s not in BEAUTY_SKUS]
+        if beauty and care:
+            raise ValueError("لا يمكن جمع منتجات المغرب والسعودية في طلب واحد")
+
+        for sku, qty in qty_by_sku.items():
+            table = BEAUTY_BUNDLE_PRICES if sku in BEAUTY_SKUS else BUNDLE_PRICES
+            if qty not in table:
+                raise ValueError("اختر كمية 1 أو 2 أو 3 لكل منتج")
 
         # Upsell: max 1 upsell item, price must be UPSELL_PRICE
         if len(upsell_items) > 1:

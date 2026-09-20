@@ -1,5 +1,6 @@
 import hashlib
 import random
+import re
 import string
 from datetime import datetime
 from typing import Optional
@@ -7,7 +8,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models import Order, OrderItem
-from app.schemas import BUNDLE_PRICES, PRODUCT_CATALOG, UPSELL_PRICE, OrderIn
+from app.schemas import BEAUTY_BUNDLE_PRICES, BEAUTY_SKUS, BUNDLE_PRICES, PRODUCT_CATALOG, UPSELL_PRICE, OrderIn
 
 
 def _generate_order_number() -> str:
@@ -18,52 +19,54 @@ def _generate_order_number() -> str:
 
 
 def _normalize_phone(phone: str) -> dict[str, str]:
-    """Return local, E.164, digits, and SHA256 hash."""
-    local = phone  # already validated as 05XXXXXXXX
-    e164 = "+966" + phone[1:]  # replace leading 0 with +966
-    digits = "966" + phone[1:]
-    hashed = hashlib.sha256(phone.lower().encode()).hexdigest()
-    return {"local": local, "e164": e164, "digits": digits, "hash": hashed}
+    """Return local, E.164, digits, and SHA256 hash. Accepts any country for tests."""
+    local = phone.strip()[:20]
+    digits = re.sub(r"\D", "", local)
+    if digits.startswith("00"):
+        digits = digits[2:]
+    if local.startswith("+"):
+        e164 = "+" + digits
+        hashed_digits = digits
+    elif digits.startswith("0") and len(digits) == 10:
+        e164 = "+966" + digits[1:]
+        hashed_digits = "966" + digits[1:]
+    else:
+        e164 = "+" + digits
+        hashed_digits = digits
+    hashed = hashlib.sha256(e164.encode()).hexdigest()
+    return {"local": local, "e164": e164[:20], "digits": hashed_digits[:20], "hash": hashed}
+
+
+def _bundle_table(sku: str) -> dict[int, int]:
+    return BEAUTY_BUNDLE_PRICES if sku in BEAUTY_SKUS else BUNDLE_PRICES
 
 
 def _compute_total(order_in: OrderIn) -> tuple[int, list[dict]]:
-    """
-    Compute server-side validated total.
-    Returns (total_sar, enriched_items).
-    """
+    """Each SKU is priced from its own 1/2/3 pack table."""
     regular_items = [i for i in order_in.items if not i.is_upsell]
     upsell_items = [i for i in order_in.items if i.is_upsell]
-
-    total_main_qty = sum(i.quantity for i in regular_items)
-    bundle_price = BUNDLE_PRICES[total_main_qty]
-
     enriched: list[dict] = []
+    total = 0
 
-    # Distribute bundle price proportionally across SKUs
-    # For simplicity when multiple SKUs: charge full bundle price on first item,
-    # zero on additional SKUs (edge-case; standard flow is one SKU per order).
-    remaining = bundle_price
-    for idx, item in enumerate(regular_items):
-        unit_price = remaining if idx == 0 else 0
+    for item in regular_items:
+        price = _bundle_table(item.sku)[item.quantity]
         enriched.append(
             {
                 "sku": item.sku,
-                "product_name": PRODUCT_CATALOG[item.sku]["name"],
+                "product_name": PRODUCT_CATALOG.get(item.sku, {}).get("name", item.sku),
                 "quantity": item.quantity,
-                "unit_price_sar": unit_price,
-                "line_total_sar": unit_price,
+                "unit_price_sar": price,
+                "line_total_sar": price,
                 "is_upsell": False,
             }
         )
-        remaining = 0
-
-    total = bundle_price
+        total += price
 
     for item in upsell_items:
         enriched.append(
             {
                 "sku": item.sku,
-                "product_name": PRODUCT_CATALOG[item.sku]["name"],
+                "product_name": PRODUCT_CATALOG.get(item.sku, {}).get("name", item.sku),
                 "quantity": 1,
                 "unit_price_sar": UPSELL_PRICE,
                 "line_total_sar": UPSELL_PRICE,
@@ -91,6 +94,9 @@ def create_order(db: Session, order_in: OrderIn) -> Order:
         total_sar=total_sar,
         status="pending",
         browser_event_id=order_in.browser_event_id,
+        city=(order_in.city or "").strip() or None,
+        address=(order_in.address or "").strip() or None,
+        notes=(order_in.notes or "").strip() or None,
     )
     db.add(order)
     db.flush()

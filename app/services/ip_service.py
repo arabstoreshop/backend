@@ -19,6 +19,9 @@ async def check_ip(ip: str, phone: str = "") -> IPCheckResult:
     Check client IP for fraud/VPN/location using MaxMind GeoIP2 Insights.
     If MaxMind credentials are not configured, allow all requests.
     """
+    if not settings.restrict_orders_to_saudi:
+        return IPCheckResult(allowed=True, country="", risk_score=0.0)
+
     if not settings.maxmind_account_id or not settings.maxmind_license_key:
         return IPCheckResult(allowed=True, country="SA", risk_score=0.0)
 
